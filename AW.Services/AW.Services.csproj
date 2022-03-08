@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="DataHelper.cs" />
+    <Compile Remove="DataSetHelper.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="log4net" Version="2.0.14" />
+    <PackageReference Include="SD.LLBLGen.Pro.ORMSupportClasses" Version="5.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AW.Dal.SqlServer\AW.Dal.SqlServer.csproj" />
+    <ProjectReference Include="..\AW.Dal\AW.Dal.csproj" />
+    <ProjectReference Include="..\AW.Helper\AW.Helper.csproj" />
+  </ItemGroup>
+
+</Project>

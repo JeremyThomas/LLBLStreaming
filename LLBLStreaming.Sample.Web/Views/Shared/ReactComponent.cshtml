@@ -1,0 +1,13 @@
+﻿@using LLBLStreaming.Sample.Web.Controllers
+
+@{
+  ViewBag.Title = "title";
+}
+
+
+<script>
+  var pageModel =  @Html.Raw(JsonNetResult.SerializedObject(Model));
+  
+  InitialiseComponents(pageModel);
+
+</script>

@@ -1,0 +1,60 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32210.238
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AW.Dal", "AW.Dal\AW.Dal.csproj", "{0B48E116-86B9-4EF4-9A0B-0C5A9ED3F4A6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AW.Dal.SqlServer", "AW.Dal.SqlServer\AW.Dal.SqlServer.csproj", "{D3FD5BCF-2342-4947-BC40-2F74302A4B92}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AW.Helper", "AW.Helper\AW.Helper.csproj", "{FFC5B55E-9157-4CE6-81BD-E593E4C08422}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AW.Services", "AW.Services\AW.Services.csproj", "{463E3808-2151-45F7-88E1-AD28840E597B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LLBLStreaming.Tests", "LLBLStreaming.Tests\LLBLStreaming.Tests.csproj", "{8F5792A3-83AC-48E9-A3D2-679E56E1608F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release 2022|Any CPU = Release 2022|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0B48E116-86B9-4EF4-9A0B-0C5A9ED3F4A6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0B48E116-86B9-4EF4-9A0B-0C5A9ED3F4A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0B48E116-86B9-4EF4-9A0B-0C5A9ED3F4A6}.Release 2022|Any CPU.ActiveCfg = Release|Any CPU
+		{0B48E116-86B9-4EF4-9A0B-0C5A9ED3F4A6}.Release 2022|Any CPU.Build.0 = Release|Any CPU
+		{0B48E116-86B9-4EF4-9A0B-0C5A9ED3F4A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0B48E116-86B9-4EF4-9A0B-0C5A9ED3F4A6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D3FD5BCF-2342-4947-BC40-2F74302A4B92}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D3FD5BCF-2342-4947-BC40-2F74302A4B92}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D3FD5BCF-2342-4947-BC40-2F74302A4B92}.Release 2022|Any CPU.ActiveCfg = Release|Any CPU
+		{D3FD5BCF-2342-4947-BC40-2F74302A4B92}.Release 2022|Any CPU.Build.0 = Release|Any CPU
+		{D3FD5BCF-2342-4947-BC40-2F74302A4B92}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D3FD5BCF-2342-4947-BC40-2F74302A4B92}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FFC5B55E-9157-4CE6-81BD-E593E4C08422}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFC5B55E-9157-4CE6-81BD-E593E4C08422}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFC5B55E-9157-4CE6-81BD-E593E4C08422}.Release 2022|Any CPU.ActiveCfg = Release 2022|Any CPU
+		{FFC5B55E-9157-4CE6-81BD-E593E4C08422}.Release 2022|Any CPU.Build.0 = Release 2022|Any CPU
+		{FFC5B55E-9157-4CE6-81BD-E593E4C08422}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFC5B55E-9157-4CE6-81BD-E593E4C08422}.Release|Any CPU.Build.0 = Release|Any CPU
+		{463E3808-2151-45F7-88E1-AD28840E597B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{463E3808-2151-45F7-88E1-AD28840E597B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{463E3808-2151-45F7-88E1-AD28840E597B}.Release 2022|Any CPU.ActiveCfg = Release|Any CPU
+		{463E3808-2151-45F7-88E1-AD28840E597B}.Release 2022|Any CPU.Build.0 = Release|Any CPU
+		{463E3808-2151-45F7-88E1-AD28840E597B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{463E3808-2151-45F7-88E1-AD28840E597B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8F5792A3-83AC-48E9-A3D2-679E56E1608F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8F5792A3-83AC-48E9-A3D2-679E56E1608F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8F5792A3-83AC-48E9-A3D2-679E56E1608F}.Release 2022|Any CPU.ActiveCfg = Release|Any CPU
+		{8F5792A3-83AC-48E9-A3D2-679E56E1608F}.Release 2022|Any CPU.Build.0 = Release|Any CPU
+		{8F5792A3-83AC-48E9-A3D2-679E56E1608F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8F5792A3-83AC-48E9-A3D2-679E56E1608F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0C898762-7187-42A5-8C95-21C8BFBA3B92}
+	EndGlobalSection
+EndGlobal
