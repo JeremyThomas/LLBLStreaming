@@ -113,7 +113,23 @@ namespace AW.Services
       return StreamProductPhotoToDataBase(dataAccessAdapter, cancellationToken, progress, file.Read(), file.FileName, incrementalProgress);
     }
 
-    static Task<long> StreamProductPhotoToDataBase(DataAccessAdapter dataAccessAdapter, CancellationToken cancellationToken,
+    static async Task<long> StreamProductPhotoToDataBase(IDataAccessAdapter dataAccessAdapter, CancellationToken cancellationToken,
+      IProgress<long> progress, Stream stream,
+      string fileName, bool incrementalProgress = false)
+    {
+      Logger.DebugMethod(dataAccessAdapter.ConnectionString, cancellationToken, null, stream.GetType(), fileName, incrementalProgress);
+      var productPhotoEntity = new ProductPhotoEntity
+      {
+        LargePhotoFileName = fileName, ModifiedDate = DateTime.Now
+      };
+
+      using var streamProgressWrapper = new StreamProgressWrapper(stream, progress, incrementalProgress);
+      productPhotoEntity.Fields[(int)ProductPhotoFieldIndex.LargePhoto].CurrentValue = streamProgressWrapper;
+      await dataAccessAdapter.SaveEntityAsync(productPhotoEntity, cancellationToken);
+      return productPhotoEntity.ProductPhotoID;
+    }
+
+    static Task<long> StreamProductPhotoToDataBaseOld(DataAccessAdapter dataAccessAdapter, CancellationToken cancellationToken,
       IProgress<long> progress, Stream stream,
       string fileName, bool incrementalProgress = false)
     {

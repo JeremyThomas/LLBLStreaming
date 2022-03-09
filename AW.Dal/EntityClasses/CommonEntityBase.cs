@@ -14,6 +14,7 @@ using System.Runtime.Serialization;
 namespace AW.Dal.EntityClasses
 {
 	// __LLBLGENPRO_USER_CODE_REGION_START AdditionalNamespaces
+	using AW.Helper;
 	// __LLBLGENPRO_USER_CODE_REGION_END
 
 	/// <summary>Common base class which is the base class for all generated entities which aren't a subtype of another entity.</summary>
@@ -91,6 +92,13 @@ namespace AW.Dal.EntityClasses
 		}
 
 		// __LLBLGENPRO_USER_CODE_REGION_START CustomEntityCode
+
+		static CommonEntityBase()
+		{
+			MetaDataHelper.FoldAllAssociatedMetadataProvidersIntoTheSubjectType(typeof (CommonEntityBase));
+			ProfilerHelper.InitializeOrmProfiler();
+		}
+
 		// __LLBLGENPRO_USER_CODE_REGION_END
 
 	}

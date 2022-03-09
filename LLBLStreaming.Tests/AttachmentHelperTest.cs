@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using AW.Dal.SqlServer;
+using AW.Helper;
 using AW.Services;
 using FluentAssertions;
 using log4net;
@@ -36,6 +37,7 @@ namespace LLBLStreaming.Tests
     [TestTransaction]
     public void TestStreamingBinarydataToServerAndBackAgain()
     {
+      ProfilerHelper.InitializeOrmProfiler().Should().BeTrue();
       var fileLength = CreateDemoFiles();
 
       // The Progress<T> constructor captures our UI context,
