@@ -105,47 +105,48 @@ namespace AW.Services
       }
     }
 
-    public static Task<long> StreamBlobToDataBase(DataAccessAdapter dataAccessAdapter,
+    public static Task<long> StreamProductPhotoToDataBase(DataAccessAdapter dataAccessAdapter,
       CancellationToken cancellationToken, IProgress<long> progress,
       UploadedFile file, bool incrementalProgress = false)
     {
       Logger.DebugMethod(dataAccessAdapter.ConnectionString, cancellationToken, null, file, incrementalProgress);
-      return StreamBlobToDataBase(dataAccessAdapter, cancellationToken, progress, file.Read(), file.FileName, incrementalProgress);
+      return StreamProductPhotoToDataBase(dataAccessAdapter, cancellationToken, progress, file.Read(), file.FileName, incrementalProgress);
     }
 
-    static Task<long> StreamBlobToDataBase(DataAccessAdapter dataAccessAdapter, CancellationToken cancellationToken,
+    static Task<long> StreamProductPhotoToDataBase(DataAccessAdapter dataAccessAdapter, CancellationToken cancellationToken,
       IProgress<long> progress, Stream stream,
       string fileName, bool incrementalProgress = false)
     {
       Logger.DebugMethod(dataAccessAdapter.ConnectionString, cancellationToken, null, stream.GetType(), fileName, incrementalProgress);
-      return StreamBlobToDataBaseAsync(dataAccessAdapter, cancellationToken, progress, stream,
+      return InsertEntityWithOneFieldStreamedAsync(dataAccessAdapter, cancellationToken, progress, stream,
         new ProductPhotoEntity
         {
           LargePhotoFileName = fileName, ModifiedDate = DateTime.Now, LargePhoto = Array.Empty<byte>()
         }, (int)ProductPhotoFieldIndex.LargePhoto, stream.Length, incrementalProgress);
     }
 
-    static async Task<long> StreamBlobToDataBaseAsync(DataAccessAdapter dataAccessAdapter, CancellationToken cancellationToken,
+    static async Task<long> InsertEntityWithOneFieldStreamedAsync(DataAccessAdapter dataAccessAdapter, CancellationToken cancellationToken,
       IProgress<long> progress, Stream stream, EntityBase2 entity, int blobbFieldIndex, long? length = null, bool incrementalProgress = false)
     {
       Logger.DebugMethod(dataAccessAdapter.ConnectionString, cancellationToken, null, stream.GetType(), entity, blobbFieldIndex, length, incrementalProgress);
       using var streamProgressWrapper = new StreamProgressWrapper(stream, progress, incrementalProgress);
-      return await StreamBlobToDataBaseAsync(dataAccessAdapter, entity, blobbFieldIndex, streamProgressWrapper, cancellationToken);
+      return await InsertEntityWithOneFieldStreamedAsync(dataAccessAdapter, entity, blobbFieldIndex, streamProgressWrapper, cancellationToken);
     }
 
     /// <summary>
-    ///   Streams the BLOB to the database asynchronously.
+    /// Inserts an Entity in the database asynchronously, with the specified field streamed.
     /// </summary>
     /// <param name="dataAccessAdapter">The data access adapter.</param>
     /// <param name="entity">The entity to be inserted.</param>
-    /// <param name="blobbFieldIndex">Index of the blobb field in the entity.</param>
+    /// <param name="indexOfFieldtoBeStreamed">Index of the field in the entity to be streamed.</param>
     /// <param name="stream">The stream.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The number of rows affected or the integer primary key of inserted row (if applicable)</returns>
-    static async Task<long> StreamBlobToDataBaseAsync(DataAccessAdapter dataAccessAdapter, EntityBase2 entity, int blobbFieldIndex, Stream stream, CancellationToken cancellationToken)
+    static async Task<long> InsertEntityWithOneFieldStreamedAsync(DataAccessAdapter dataAccessAdapter, EntityBase2 entity, int indexOfFieldtoBeStreamed, Stream stream,
+      CancellationToken cancellationToken)
     {
-      Logger.DebugMethod(dataAccessAdapter.ConnectionString, entity, blobbFieldIndex, stream.GetType(), cancellationToken);
-      entity.Fields[blobbFieldIndex].CurrentValue = stream;
+      Logger.DebugMethod(dataAccessAdapter.ConnectionString, entity, indexOfFieldtoBeStreamed, stream.GetType(), cancellationToken);
+      entity.Fields[indexOfFieldtoBeStreamed].CurrentValue = stream;
       var actionQuery = dataAccessAdapter.CreateInsertDQ(entity);
       var numRowsAffected = await dataAccessAdapter.ExecuteActionQueryAsync(actionQuery, cancellationToken);
       var id = actionQuery.ParameterFieldRelations.FirstOrDefault()?.Field.CurrentValue;
@@ -157,13 +158,13 @@ namespace AW.Services
       };
     }
 
-    public static async Task<long> CopyBinaryValueToFile(IDataAccessAdapter portalAdapterToUse, long attachmentID, string filePath, CancellationToken cancellationToken,
+    public static async Task<long> StreamLargePhotoToFileAsync(IDataAccessAdapter portalAdapterToUse, long productPhotoID, string filePath, CancellationToken cancellationToken,
       IProgress<long> progress)
     {
-      using var dateReader = await GetAttachmentReader(portalAdapterToUse, attachmentID, cancellationToken);
+      using var dateReader = await GetProductLargePhotoReader(portalAdapterToUse, productPhotoID, cancellationToken);
       if (dateReader is DbDataReader reader && await reader.ReadAsync(cancellationToken).ConfigureAwait(GeneralHelper.ContinueOnCapturedContext))
       {
-        var stream = GetAttachmentStream(reader, 1);
+        var stream = GetStream(reader, 1);
         if (stream.CanRead)
         {
           using var file = new FileStream(filePath, FileMode.Create, FileAccess.Write);
@@ -176,13 +177,13 @@ namespace AW.Services
       return 0;
     }
 
-    public static Task<IDataReader> GetAttachmentReader(IDataAccessAdapter portalAdapterToUse, long attachmentID, CancellationToken cancellationToken)
+    public static Task<IDataReader> GetProductLargePhotoReader(IDataAccessAdapter portalAdapterToUse, long productPhotoID, CancellationToken cancellationToken)
     {
-      Logger.DebugMethod(portalAdapterToUse.ConnectionString, attachmentID);
+      Logger.DebugMethod(portalAdapterToUse.ConnectionString, productPhotoID);
       var qf = new QueryFactory();
       var q = qf.Create()
         .Select(ProductPhotoFields.ProductPhotoID, ProductPhotoFields.LargePhoto, ProductPhotoFields.LargePhotoFileName)
-        .Where(ProductPhotoFields.ProductPhotoID == attachmentID);
+        .Where(ProductPhotoFields.ProductPhotoID == productPhotoID);
       return portalAdapterToUse.FetchAsDataReaderAsync(q, CommandBehavior.SequentialAccess, cancellationToken);
     }
 
@@ -191,20 +192,20 @@ namespace AW.Services
     /// </summary>
     /// <param name="reader">The reader.</param>
     /// <returns>Stream and its Length</returns>
-    public static (Stream stream, long size) GetAttachmentStream(DbDataReader reader)
+    public static (Stream stream, long size) GetStream(DbDataReader reader)
     {
       Logger.DebugMethod();
       var size = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-      return (GetAttachmentStream(reader, 1), size);
+      return (GetStream(reader, 1), size);
     }
 
     /// <summary>
-    ///   Gets the attachment stream. Should be System.Data.SqlClient.SqlSequentialStream
+    ///   Gets the stream. Should be System.Data.SqlClient.SqlSequentialStream
     /// </summary>
     /// <param name="reader">The reader.</param>
     /// <param name="ordinal"></param>
     /// <returns>The stream</returns>
-    public static Stream GetAttachmentStream(DbDataReader reader, int ordinal)
+    public static Stream GetStream(DbDataReader reader, int ordinal)
     {
       var readerType = reader.GetType();
       Logger.DebugMethod(readerType);
