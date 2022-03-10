@@ -54,7 +54,7 @@ namespace LLBLStreaming.Tests
       File.Exists(filePath).Should().BeTrue();
       downLoadFileLength.Should().Be(fileLength);
       File.Delete(filePath);
-      var downLoadFileLength2 = StreamHelper.WriteLargePhotoToFileAsync(dataAccessAdapter, task.Result, filePath, tokenSource.Token).Result;
+      var downLoadFileLength2 = StreamHelper.StreamLargePhotoToFileWithExcludedFieldsAsync(dataAccessAdapter, task.Result, filePath, tokenSource.Token).Result;
       File.Exists(filePath).Should().BeTrue();
       downLoadFileLength2.Should().Be(fileLength);
       File.Delete(filePath);

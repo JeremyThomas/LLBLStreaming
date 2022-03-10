@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -212,12 +213,13 @@ namespace AW.Dal.SqlServer
     /// <remarks>
     ///   The field data is set like a normal field value set, so authorization is applied to it.
     /// </remarks>
-    public async Task FetchExcludedFieldsAsStreamsAsync(IEntity2 entity, ExcludeIncludeFieldsList excludedIncludedFields, CancellationToken cancellationToken)
+    public async Task FetchExcludedFieldsAsStreamsAsync(IEntity2 entity, ExcludeIncludeFieldsList excludedIncludedFields, 
+      Action<IEntityCore> doSomethingWithStreams, CancellationToken cancellationToken)
     {
       if (excludedIncludedFields == null || excludedIncludedFields.Count <= 0 || entity == null) return;
 
       var collection = new EntityCollectionNonGeneric(entity.GetEntityFactory()) { (EntityBase2)entity };
-      await FetchExcludedFieldsAsStreamsAsync(collection, excludedIncludedFields, cancellationToken).ConfigureAwait(false);
+      await FetchExcludedFieldsAsStreamsAsync(collection, excludedIncludedFields,doSomethingWithStreams, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -245,7 +247,7 @@ namespace AW.Dal.SqlServer
     ///   databases have a limit
     ///   on the # of parameters per query.
     /// </remarks>
-    public virtual async Task FetchExcludedFieldsAsStreamsAsync(IEntityCollection2 entities, ExcludeIncludeFieldsList excludedIncludedFields, CancellationToken cancellationToken)
+    public virtual async Task FetchExcludedFieldsAsStreamsAsync(IEntityCollection2 entities, ExcludeIncludeFieldsList excludedIncludedFields, Action<IEntityCore> doSomethingWithStreams, CancellationToken cancellationToken)
     {
       if (entities == null || entities.Count <= 0) return;
       if (entities.EntityFactoryToUse == null) throw new ORMGeneralOperationException("The entity factory of the passed in entities collection is null.");
@@ -327,7 +329,7 @@ namespace AW.Dal.SqlServer
             IDataReader reader = null;
             try
             {
-              reader = await FetchDataReaderAsync(CommandBehavior.Default,
+              reader = await FetchDataReaderAsync(CommandBehavior.SequentialAccess,
                 new QueryParameters(0, 0, batchSize, filter)
                 {
                   SorterToUse = null,
@@ -337,7 +339,7 @@ namespace AW.Dal.SqlServer
                   IsLocalCopy = true
                 }, cancellationToken).ConfigureAwait(false);
               ConsumeExcludedFieldsValueBatch(exposedPersistenceCore, dummy, numberOfPkFields, excludedFieldsToUse, resultFields, fieldPersistenceInfos,
-                entityHashes, hashProducer, pkFieldsToPass, reader);
+                entityHashes, hashProducer, pkFieldsToPass, reader, doSomethingWithStreams);
             }
             finally
             {
@@ -374,12 +376,10 @@ namespace AW.Dal.SqlServer
     /// <param name="reader">The reader.</param>
     static void ConsumeExcludedFieldsValueBatch(dynamic exposedPersistenceCore, IEntityCore dummy, int numberOfPkFields, IList excludedFieldsToUse, IEntityFieldsCore resultFields,
       IFieldPersistenceInfo[] persistenceInfos, Dictionary<int, List<IEntityCore>> entityHashes,
-      IEntityFieldsCore hashProducer, List<IEntityFieldCore> pkFieldsToPass, IDataReader reader)
+      IEntityFieldsCore hashProducer, List<IEntityFieldCore> pkFieldsToPass, IDataReader reader, Action<IEntityCore> doSomethingWithStreams)
     {
-      var values = new object[resultFields.Count];
       while (reader.Read())
       {
-        reader.GetValues(values);
         // calculate hash from pk fields in row. Do this by setting the pk fields in hashProducer and grab the hashvalue. 
         var isConverted = false;
         for (var j = 0; j < numberOfPkFields; j++)
@@ -387,7 +387,8 @@ namespace AW.Dal.SqlServer
           // pk fields are at the front. 
           var index = ((IEntityFieldCore)dummy.Fields.PrimaryKeyFields[j]).FieldIndex;
           var fieldInfo = hashProducer.GetFieldInfo(index);
-          var value = FieldUtilities.DetermineValueToSet(fieldInfo, persistenceInfos[j], values[j], out isConverted);
+          var val =reader.GetValue(j);
+          var value = FieldUtilities.DetermineValueToSet(fieldInfo, persistenceInfos[j], val, out isConverted);
           hashProducer.SetCurrentValue(index, value);
         }
 
@@ -401,11 +402,14 @@ namespace AW.Dal.SqlServer
           if (index < 0)
             // unknown
             continue;
-          var fieldInfo = currentEntity.Fields.GetFieldInfo(index);
-          var value = FieldUtilities.DetermineValueToSet(fieldInfo, persistenceInfos[numberOfPkFields + j], values[numberOfPkFields + j],
-            out isConverted);
-          currentEntity.Fields.ForcedValueWrite(index, value, value);
+          if (reader is DbDataReader dbDataReader)
+          {
+            var val = dbDataReader.GetStream(numberOfPkFields + j);
+            currentEntity.Fields.SetCurrentValue(index, val);
+          }
         }
+
+        doSomethingWithStreams(currentEntity);
       }
     }
 

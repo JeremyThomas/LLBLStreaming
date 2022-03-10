@@ -164,7 +164,7 @@ namespace AW.Services
       CancellationToken cancellationToken)
     {
       Logger.DebugMethod(dataAccessAdapter.ConnectionString, entity, indexOfFieldtoBeStreamed, stream.GetType(), cancellationToken);
-      entity.Fields[indexOfFieldtoBeStreamed].CurrentValue = stream;
+      entity.Fields.SetCurrentValue(indexOfFieldtoBeStreamed, stream);
       var actionQuery = dataAccessAdapter.CreateInsertDQ(entity);
       var numRowsAffected = await dataAccessAdapter.ExecuteActionQueryAsync(actionQuery, cancellationToken);
       var id = actionQuery.ParameterFieldRelations.FirstOrDefault()?.Field.CurrentValue;
@@ -176,23 +176,33 @@ namespace AW.Services
       };
     }
 
-    public static async Task<long> WriteLargePhotoToFileAsync(DataAccessAdapter dataAccessAdapter, long productPhotoID, string filePath, CancellationToken cancellationToken)
+    public static async Task<long> StreamLargePhotoToFileWithExcludedFieldsAsync(DataAccessAdapter dataAccessAdapter, long productPhotoID, string filePath, CancellationToken cancellationToken)
     {
       var linqMetaData = new LinqMetaData(dataAccessAdapter);
       var productPhotoEntity = linqMetaData.ProductPhoto.ExcludeFields(e => e.LargePhoto).First(p => p.ProductPhotoID == productPhotoID);
-      var excludedFields = new ExcludeIncludeFieldsList { ProductPhotoFields.LargePhoto };
-      await dataAccessAdapter.FetchExcludedFieldsAsStreamsAsync(productPhotoEntity, excludedFields, cancellationToken);
-      //  await dataAccessAdapter.FetchExcludedFieldsAsync(productPhotoEntity, excludedFields, cancellationToken);
-      //  dataAccessAdapter.FetchExcludedFields(productPhotoEntity, excludedFields);
-      if (productPhotoEntity.LargePhoto.Length > 0)
-      {
-        using var fileStream = File.Create(filePath);
-        await fileStream.WriteAsync(productPhotoEntity.LargePhoto, 0, productPhotoEntity.LargePhoto.Length, cancellationToken);
-        return fileStream.Length;
-      }
+      var entityFieldCore = ProductPhotoFields.LargePhoto;
+      var excludedFields = new ExcludeIncludeFieldsList { entityFieldCore };
+      long length = 0;
+      await dataAccessAdapter.FetchExcludedFieldsAsStreamsAsync(productPhotoEntity, excludedFields, WriteLargePhotoToFile, cancellationToken);
+      return length;
 
-      return 0;
+      void WriteLargePhotoToFile(IEntityCore entityCore)
+      {
+        var currentValue = entityCore.Fields.GetCurrentValue(entityFieldCore.FieldIndex);
+        using var fileStream = File.Create(filePath);
+        if (currentValue is Stream stream)
+        {
+          stream.CopyTo(fileStream);
+          length = fileStream.Length;
+        }
+        else if (currentValue is byte[] { Length: > 0 } blob)
+        {
+          fileStream.Write(blob, 0, blob.Length);
+          length = fileStream.Length;
+        }
+      }
     }
+
 
     public static async Task<long> StreamLargePhotoToFileAsync(IDataAccessAdapter dataAccessAdapter, long productPhotoID, string filePath, CancellationToken cancellationToken,
       IProgress<long> progress)
