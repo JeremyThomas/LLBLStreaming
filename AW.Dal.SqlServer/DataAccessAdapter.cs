@@ -201,7 +201,8 @@ namespace AW.Dal.SqlServer
       var assembly = typeof(IEntityCollection2).Assembly;
       var excludedFieldsBatchQueryParametersType = assembly.GetType("SD.LLBLGen.Pro.ORMSupportClasses.ExcludedFieldsBatchQueryParameters`1");
       var entityBase2Type = typeof(EntityBase2);
-      dynamic parameters = MetaDataHelper.CreateGeneric(excludedFieldsBatchQueryParametersType, entityBase2Type);
+      var excludedFieldsBatchQueryParametersSpecificType = excludedFieldsBatchQueryParametersType.MakeGenericType(entityBase2Type);
+      dynamic parameters = Activator.CreateInstance(excludedFieldsBatchQueryParametersSpecificType);
 
       var produceElementsForExcludedFieldBatchFetchesMethod = persistenceCoreType.GetMethod("ProduceElementsForExcludedFieldBatchFetches", BindingFlags.NonPublic | BindingFlags.Static);
 
@@ -229,9 +230,19 @@ namespace AW.Dal.SqlServer
           KeepConnectionOpen = true;
           var queryCreationManager = CreateQueryCreationManager(PersistenceInfoProviderSingleton.GetInstance());
           var exposedQueryCreationManager = Exposed.From(queryCreationManager);
-          var resultFields = parameters.ResultFields;
-          var fieldPersistenceInfos = exposedQueryCreationManager.GetFieldPersistenceInfos(resultFields);
-          await exposedPersistenceCore.FetchExcludedFieldsBatchesAsync(this, entities, parameters, fieldPersistenceInfos, cancellationToken).ConfigureAwait(false);
+         var parametersExposed = Exposed.From(parameters);
+
+          var ExcludedFieldsBatchQueryParametersType =  parameters.GetType();
+          var propertyInfo = excludedFieldsBatchQueryParametersSpecificType.GetRuntimeProperties().Last();// excludedFieldsBatchQueryParametersType.GetProperty("ResultFields", BindingFlags.NonPublic);
+          var resultFields = propertyInfo.GetValue(parameters);
+         // var resultFields = parameters.ResultFields;
+          var fieldPersistenceInfos = exposedQueryCreationManager.GetFieldPersistenceInfos(resultFields as IEntityFieldsCore);
+
+          var FetchExcludedFieldsBatchesAsyncMethod = persistenceCoreType.GetMethod("FetchExcludedFieldsBatchesAsync", BindingFlags.NonPublic | BindingFlags.Static);
+          var FetchExcludedFieldsBatchesAsyncMethodInfo = FetchExcludedFieldsBatchesAsyncMethod.MakeGenericMethod(genericArguments);
+          var aResult = (Task)FetchExcludedFieldsBatchesAsyncMethodInfo.Invoke(null, new object[] {this, entities, parameters, fieldPersistenceInfos, cancellationToken });
+          await aResult;
+          //   await exposedPersistenceCore.FetchExcludedFieldsBatchesAsync(this, entities, parameters, fieldPersistenceInfos, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
