@@ -9,8 +9,11 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using AW.Helper;
+using ExposedObject;
 using SD.LLBLGen.Pro.ORMSupportClasses;
 using SD.LLBLGen.Pro.DQE.SqlServer;
 
@@ -137,6 +140,112 @@ namespace AW.Dal.SqlServer
     }
 
     // __LLBLGENPRO_USER_CODE_REGION_START CustomDataAccessAdapterCode
+
+      /// <summary>
+    ///   Async variant of <see cref="FetchExcludedFields(IEntity2, ExcludeIncludeFieldsList)" />.
+    ///   Loads the data for the excluded fields specified in the list of excluded fields into the entity passed in.
+    /// </summary>
+    /// <param name="entity">The entity to load the excluded field data into.</param>
+    /// <param name="excludedIncludedFields">
+    ///   The excludedIncludedFields object as it is used when fetching the passed in entity. If you used
+    ///   the excludedIncludedFields object to fetch only the fields in that list (i.e.
+    ///   excludedIncludedFields.ExcludeContainedFields==false), the routine
+    ///   will fetch all other fields in the resultset for the entities in the collection excluding the fields in
+    ///   excludedIncludedFields.
+    /// </param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns></returns>
+    /// <remarks>
+    ///   The field data is set like a normal field value set, so authorization is applied to it.
+    /// </remarks>
+    public async Task FetchExcludedFieldsAsStreamsAsync(IEntity2 entity, ExcludeIncludeFieldsList excludedIncludedFields, CancellationToken cancellationToken)
+    {
+      if (excludedIncludedFields == null || excludedIncludedFields.Count <= 0 || entity == null) return;
+
+      var collection = new EntityCollectionNonGeneric(entity.GetEntityFactory()) { (EntityBase2)entity };
+      await FetchExcludedFieldsAsStreamsAsync(collection, excludedIncludedFields, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///   Async variant of <see cref="FetchExcludedFields(IEntityCollection2, ExcludeIncludeFieldsList)" />.
+    ///   Loads the data for the excluded fields specified in the list of excluded fields into all the entities in the entities
+    ///   collection passed in.
+    /// </summary>
+    /// <param name="entities">
+    ///   The entities to load the excluded field data into. The entities have to be either of the same type or have to be
+    ///   in the same inheritance hierarchy as the entity which factory is set in the collection.
+    /// </param>
+    /// <param name="excludedIncludedFields">
+    ///   The excludedIncludedFields object as it is used when fetching the passed in collection. If you used
+    ///   the excludedIncludedFields object to fetch only the fields in that list (i.e.
+    ///   excludedIncludedFields.ExcludeContainedFields==false), the routine
+    ///   will fetch all other fields in the resultset for the entities in the collection excluding the fields in
+    ///   excludedIncludedFields.
+    /// </param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns></returns>
+    /// <exception cref="ORMGeneralOperationException">The entity factory of the passed in entities collection is null.</exception>
+    /// <remarks>
+    ///   The field data is set like a normal field value set, so authorization is applied to it.
+    ///   This routine batches fetches to have at most 5*ParameterizedThreshold of parameters per fetch. Keep in mind that most
+    ///   databases have a limit
+    ///   on the # of parameters per query.
+    /// </remarks>
+    public virtual async Task FetchExcludedFieldsAsStreamsAsync(IEntityCollection2 entities, ExcludeIncludeFieldsList excludedIncludedFields, CancellationToken cancellationToken)
+    {
+      if (entities == null || entities.Count <= 0) return;
+      if (entities.EntityFactoryToUse == null) throw new ORMGeneralOperationException("The entity factory of the passed in entities collection is null.");
+
+      var persistenceCoreType = typeof(PersistenceCore);
+      var exposedPersistenceCore = Exposed.From(persistenceCoreType);
+      var assembly = typeof(IEntityCollection2).Assembly;
+      var excludedFieldsBatchQueryParametersType = assembly.GetType("SD.LLBLGen.Pro.ORMSupportClasses.ExcludedFieldsBatchQueryParameters`1");
+      var entityBase2Type = typeof(EntityBase2);
+      dynamic parameters = MetaDataHelper.CreateGeneric(excludedFieldsBatchQueryParametersType, entityBase2Type);
+
+      var produceElementsForExcludedFieldBatchFetchesMethod = persistenceCoreType.GetMethod("ProduceElementsForExcludedFieldBatchFetches", BindingFlags.NonPublic | BindingFlags.Static);
+
+      // Binding the method info to generic arguments
+      Type[] genericArguments = { entityBase2Type };
+      if (produceElementsForExcludedFieldBatchFetchesMethod != null)
+      {
+        var produceElementsForExcludedFieldBatchFetchesMethodInfo = produceElementsForExcludedFieldBatchFetchesMethod.MakeGenericMethod(genericArguments);
+
+        var result = produceElementsForExcludedFieldBatchFetchesMethodInfo.Invoke(null, new object[]
+        {
+          entities, excludedIncludedFields, parameters, new Func<int, IEntityFieldsCore>(a => new EntityFields2(a)),
+          ParameterisedPrefetchPathThreshold
+        });
+        //if (!exposedPersistenceCore.ProduceElementsForExcludedFieldBatchFetches(entities, excludedIncludedFields, parameters, new Func<int, IEntityFieldsCore>(a => new EntityFields2(a)),
+        //      ParameterisedPrefetchPathThreshold))
+        var b = result as bool?;
+        if (!b.GetValueOrDefault())
+          // nothing to do further
+          return;
+        // Grab the field persistence infos for type converters
+        var keepConnectionOpenSave = KeepConnectionOpen;
+        try
+        {
+          KeepConnectionOpen = true;
+          var queryCreationManager = CreateQueryCreationManager(PersistenceInfoProviderSingleton.GetInstance());
+          var exposedQueryCreationManager = Exposed.From(queryCreationManager);
+          var resultFields = parameters.ResultFields;
+          var fieldPersistenceInfos = exposedQueryCreationManager.GetFieldPersistenceInfos(resultFields);
+          await exposedPersistenceCore.FetchExcludedFieldsBatchesAsync(this, entities, parameters, fieldPersistenceInfos, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+          KeepConnectionOpen = keepConnectionOpenSave;
+          CloseConnectionIfPossible();
+        }
+      }
+    }
+
+    /// <summary> Closes the connection if possible (i.e. when keepConnectionOpen is false and isTransactionInProgress is false </summary>
+    private void CloseConnectionIfPossible()
+    {
+      if (!(KeepConnectionOpen || IsTransactionInProgress)) CloseConnection();
+    }
 
     /// <summary>
     /// Creates a new Insert Query object which is ready to use.

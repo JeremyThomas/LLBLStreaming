@@ -9,21 +9,23 @@ using AW.Dal;
 using AW.Dal.EntityClasses;
 using AW.Dal.FactoryClasses;
 using AW.Dal.HelperClasses;
+using AW.Dal.Linq;
 using AW.Dal.SqlServer;
 using AW.Helper;
 using log4net;
+using SD.LLBLGen.Pro.LinqSupportClasses;
 using SD.LLBLGen.Pro.ORMSupportClasses;
 using SD.LLBLGen.Pro.QuerySpec;
 using SD.LLBLGen.Pro.QuerySpec.Adapter;
 
 namespace AW.Services
 {
-  public static class AttachmentHelper
+  public static class StreamHelper
   {
     public const string HttpRequestParamNameUploadID = "UploadID";
     public const string HttpRequestParamNameFileName = "fileName";
     public const string HttpRequestParamNameFileGuid = "fileGuid";
-    static readonly ILog Logger = LogManager.GetLogger(typeof(AttachmentHelper));
+    static readonly ILog Logger = LogManager.GetLogger(typeof(StreamHelper));
 
     public static Task<AjaxResponseMessage> UploadChunks(ushort? chunkNumber, Guid fileGuid, string uploadFolder,
       Stream inputStream)
@@ -150,7 +152,7 @@ namespace AW.Services
     }
 
     /// <summary>
-    /// Inserts an Entity in the database asynchronously, with the specified field streamed.
+    ///   Inserts an Entity in the database asynchronously, with the specified field streamed.
     /// </summary>
     /// <param name="dataAccessAdapter">The data access adapter.</param>
     /// <param name="entity">The entity to be inserted.</param>
@@ -174,10 +176,28 @@ namespace AW.Services
       };
     }
 
-    public static async Task<long> StreamLargePhotoToFileAsync(IDataAccessAdapter portalAdapterToUse, long productPhotoID, string filePath, CancellationToken cancellationToken,
+    public static async Task<long> WriteLargePhotoToFileAsync(DataAccessAdapter dataAccessAdapter, long productPhotoID, string filePath, CancellationToken cancellationToken)
+    {
+      var linqMetaData = new LinqMetaData(dataAccessAdapter);
+      var productPhotoEntity = linqMetaData.ProductPhoto.ExcludeFields(e => e.LargePhoto).First(p => p.ProductPhotoID == productPhotoID);
+      var excludedFields = new ExcludeIncludeFieldsList { ProductPhotoFields.LargePhoto };
+      await dataAccessAdapter.FetchExcludedFieldsAsStreamsAsync(productPhotoEntity, excludedFields, cancellationToken);
+      //  await dataAccessAdapter.FetchExcludedFieldsAsync(productPhotoEntity, excludedFields, cancellationToken);
+      //  dataAccessAdapter.FetchExcludedFields(productPhotoEntity, excludedFields);
+      if (productPhotoEntity.LargePhoto.Length > 0)
+      {
+        using var fileStream = File.Create(filePath);
+        await fileStream.WriteAsync(productPhotoEntity.LargePhoto, 0, productPhotoEntity.LargePhoto.Length, cancellationToken);
+        return fileStream.Length;
+      }
+
+      return 0;
+    }
+
+    public static async Task<long> StreamLargePhotoToFileAsync(IDataAccessAdapter dataAccessAdapter, long productPhotoID, string filePath, CancellationToken cancellationToken,
       IProgress<long> progress)
     {
-      using var dateReader = await GetProductLargePhotoReader(portalAdapterToUse, productPhotoID, cancellationToken);
+      using var dateReader = await GetProductLargePhotoReader(dataAccessAdapter, productPhotoID, cancellationToken);
       if (dateReader is DbDataReader reader && await reader.ReadAsync(cancellationToken).ConfigureAwait(GeneralHelper.ContinueOnCapturedContext))
       {
         var stream = GetStream(reader, 1);
@@ -193,14 +213,14 @@ namespace AW.Services
       return 0;
     }
 
-    public static Task<IDataReader> GetProductLargePhotoReader(IDataAccessAdapter portalAdapterToUse, long productPhotoID, CancellationToken cancellationToken)
+    public static Task<IDataReader> GetProductLargePhotoReader(IDataAccessAdapter dataAccessAdapter, long productPhotoID, CancellationToken cancellationToken)
     {
-      Logger.DebugMethod(portalAdapterToUse.ConnectionString, productPhotoID);
+      Logger.DebugMethod(dataAccessAdapter.ConnectionString, productPhotoID);
       var qf = new QueryFactory();
       var q = qf.Create()
         .Select(ProductPhotoFields.ProductPhotoID, ProductPhotoFields.LargePhoto, ProductPhotoFields.LargePhotoFileName)
         .Where(ProductPhotoFields.ProductPhotoID == productPhotoID);
-      return portalAdapterToUse.FetchAsDataReaderAsync(q, CommandBehavior.SequentialAccess, cancellationToken);
+      return dataAccessAdapter.FetchAsDataReaderAsync(q, CommandBehavior.SequentialAccess, cancellationToken);
     }
 
     /// <summary>

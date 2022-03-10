@@ -14,7 +14,7 @@ using StealFocus.MSTestExtensions;
 namespace LLBLStreaming.Tests
 {
   [TestClass]
-  public class AttachmentHelperTest : MSTestExtensionsTestClass
+  public class StreamHelperHelperTest : MSTestExtensionsTestClass
   {
     public static readonly ILog Logger = LogManager.GetLogger("Tests");
 
@@ -46,15 +46,18 @@ namespace LLBLStreaming.Tests
 
       var tokenSource = new CancellationTokenSource();
       var dataAccessAdapter = new DataAccessAdapter();
-      var task = AttachmentHelper.StreamProductPhotoToDataBase(dataAccessAdapter, tokenSource.Token, progress, new UploadedFile(BinarydataFileName, BinarydataFileName));
+      var task = StreamHelper.StreamProductPhotoToDataBase(dataAccessAdapter, tokenSource.Token, progress, new UploadedFile(BinarydataFileName, BinarydataFileName));
       task.Wait(tokenSource.Token);
       task.Result.Should().BeGreaterOrEqualTo(1);
       var filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), BinarydataFileName);
-      var downLoadFileLength = AttachmentHelper
-        .StreamLargePhotoToFileAsync(dataAccessAdapter, task.Result, filePath, tokenSource.Token, progress).Result;
+      var downLoadFileLength = StreamHelper.StreamLargePhotoToFileAsync(dataAccessAdapter, task.Result, filePath, tokenSource.Token, progress).Result;
       File.Exists(filePath).Should().BeTrue();
       downLoadFileLength.Should().Be(fileLength);
       File.Delete(filePath);
+      //var downLoadFileLength2 = StreamHelper.WriteLargePhotoToFileAsync(dataAccessAdapter, task.Result, filePath, tokenSource.Token).Result;
+      //File.Exists(filePath).Should().BeTrue();
+      //downLoadFileLength2.Should().Be(fileLength);
+      //File.Delete(filePath);
     }
 
     /// <summary>
