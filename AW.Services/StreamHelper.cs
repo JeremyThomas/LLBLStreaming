@@ -180,6 +180,7 @@ namespace AW.Services
     {
       var linqMetaData = new LinqMetaData(dataAccessAdapter);
       var productPhotoEntity = linqMetaData.ProductPhoto.ExcludeFields(e => e.LargePhoto).First(p => p.ProductPhotoID == productPhotoID);
+     // dataAccessAdapter.FetchExcludedFieldsAsStreams(productPhotoEntity, null, null, null);
       var entityFieldCore = ProductPhotoFields.LargePhoto;
       var excludedFields = new ExcludeIncludeFieldsList { entityFieldCore };
       long length = 0;

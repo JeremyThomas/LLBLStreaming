@@ -180,6 +180,7 @@ namespace AW.Dal.SqlServer
 
     private SqlServerCompatibilityLevel? _compatibilityLevel;
 
+
     /// <summary>
     ///   The per-instance compatibility level used by this DQE instance. Default is the one set globally, which is by default
     ///   SqlServer2005 (for 2005+).
@@ -195,6 +196,128 @@ namespace AW.Dal.SqlServer
     }
 
     // __LLBLGENPRO_USER_CODE_REGION_START CustomDataAccessAdapterCode
+
+    static readonly Type PersistenceCoreType = typeof(PersistenceCore);
+    static readonly dynamic ExposedPersistenceCore = Exposed.From(PersistenceCoreType);
+    static readonly Type EntityBase2Type = typeof(EntityBase2);
+    static readonly Type ExcludedFieldsBatchQueryParametersType = typeof(IEntityCollection2).Assembly.GetType("SD.LLBLGen.Pro.ORMSupportClasses.ExcludedFieldsBatchQueryParameters`1");
+    static readonly Type ExcludedFieldsBatchQueryParametersSpecificType = ExcludedFieldsBatchQueryParametersType.MakeGenericType(EntityBase2Type);
+
+    static DataAccessAdapter()
+    {
+    }
+
+    public virtual bool FetchExcludedFieldsAsStreams(IEntity2 entityToFetch, IPrefetchPath2 prefetchPath, Context contextToUse, ExcludeIncludeFieldsList excludedIncludedFields)
+    {
+      TraceHelper.WriteLineIf(TraceHelper.PersistenceExecutionSwitch.TraceInfo, "DataAccessAdapterBase.FetchEntity(4)", "Method Enter");
+
+      var filter = new RelationPredicateBucket();
+      var pkFilter = CreatePrimaryKeyFilter(entityToFetch.Fields.PrimaryKeyFields);
+      if (pkFilter == null)
+        throw new ORMQueryConstructionException("The entity '" + entityToFetch.LLBLGenProEntityName +
+                                                "' doesn't have a PK defined, and FetchEntity therefore can't create a query to fetch it. Please define a PK on the entity");
+      filter.PredicateExpression.Add(pkFilter);
+
+      var fetchResult = FetchEntityUsingFilter(entityToFetch, prefetchPath, contextToUse, filter, excludedIncludedFields);
+      TraceHelper.WriteLineIf(TraceHelper.PersistenceExecutionSwitch.TraceInfo, "DataAccessAdapterBase.FetchEntity(4)", "Method Exit");
+      return fetchResult;
+    }
+
+    private bool FetchEntityUsingFilter(IEntity2 entityToFetch, IPrefetchPath2 prefetchPath, Context contextToUse, IRelationPredicateBucket filter,
+      ExcludeIncludeFieldsList excludedIncludedFields)
+    {
+      if (filter == null) throw new ORMGeneralOperationException("Filter can't be null.");
+      if (entityToFetch == null)
+      {
+        TraceHelper.WriteLineIf(TraceHelper.PersistenceExecutionSwitch.TraceInfo, "DataAccessAdapterBase.FetchEntityUsingFilter(5): entity is null.", "Method Exit");
+        return false;
+      }
+
+      var queryCreationManager = CreateQueryCreationManager(PersistenceInfoProviderSingleton.GetInstance());
+      var exposedQueryCreationManager = Exposed.From(queryCreationManager);
+      var discriminatorFieldIndex = -1;
+      var entityToFetchAsEntityBase2 = (EntityBase2)entityToFetch;
+      var entityToFetchAsEntityBase2Exposed = Exposed.From(entityToFetchAsEntityBase2);
+      var hierarchyType = (InheritanceHierarchyType)entityToFetchAsEntityBase2Exposed.GetInheritanceHierarchyType();
+      var inheritanceInfoProvider = entityToFetchAsEntityBase2Exposed.GetInheritanceInfoProvider() as IInheritanceInfoProvider;
+      ExposedPersistenceCore.AddInheritanceRelatedElementsToQueryElementsForEntities(hierarchyType, filter.PredicateExpression, filter.Relations,
+        inheritanceInfoProvider, entityToFetch.LLBLGenProEntityName, ref discriminatorFieldIndex);
+      ExposedPersistenceCore.PreprocessDerivedTablesForInheritanceInfo(filter.Relations.GetAllDerivedTables(), inheritanceInfoProvider);
+
+      var entityToFetchIsNew = entityToFetch.IsNew;
+      var activeContext = contextToUse;
+      if (activeContext == null && entityToFetch.ActiveContext != null) activeContext = entityToFetch.ActiveContext;
+
+      bool fetchResult;
+      var keepConnectionOpenSave = KeepConnectionOpen;
+      var tempContextUsed = false;
+      try
+      {
+        KeepConnectionOpen = true;
+        IFieldPersistenceInfo[] persistenceInfos = exposedQueryCreationManager.GetFieldPersistenceInfos(entityToFetch.Fields);
+        // remove the persistence infos from the persistentInfos array (set the slots to null) for the excluded fields in excludedFields.
+        ExposedPersistenceCore.ExcludeFieldsFromPersistenceInfos(entityToFetch.Fields, persistenceInfos, excludedIncludedFields, hierarchyType, discriminatorFieldIndex);
+        fetchResult = FetchEntityUsingFilter(entityToFetch.Fields, persistenceInfos, filter);
+      
+      }
+      finally
+      {
+        if (tempContextUsed)
+        {
+          // first clear the context, as it was introduced in this scope and no longer needed. This will make sure the context is removed from
+          // all the entities in the graph.
+          entityToFetch.ActiveContext = null;
+          activeContext.Clear();
+          activeContext = null;
+        }
+
+        KeepConnectionOpen = keepConnectionOpenSave;
+        CloseConnectionIfPossible();
+      }
+
+      TraceHelper.WriteLineIf(TraceHelper.PersistenceExecutionSwitch.TraceInfo, "DataAccessAdapterBase.FetchEntityUsingFilter(5)", "Method Exit");
+      return fetchResult;
+    }
+
+    private bool FetchEntityUsingFilter(IEntityFields2 fieldsToFetch, IFieldPersistenceInfo[] persistenceInfos, IRelationPredicateBucket filter)
+    {
+      TraceHelper.WriteLineIf(TraceHelper.PersistenceExecutionSwitch.TraceInfo, "DataAccessAdapterBase.FetchEntityUsingFilter(3)", "Method Enter");
+
+      fieldsToFetch.State = EntityState.OutOfSync;
+      IPredicateExpression predicateExpressionToUse = null;
+      bool relationsPresent = false;
+      
+      var queryCreationManager = CreateQueryCreationManager(PersistenceInfoProviderSingleton.GetInstance());
+      var exposedQueryCreationManager = Exposed.From(queryCreationManager);
+      exposedQueryCreationManager.InterpretFilterBucket(filter, ref relationsPresent, ref predicateExpressionToUse);
+
+      foreach(var expressionField in fieldsToFetch.FieldsWithExpressionOrAggregate)
+      {
+        exposedQueryCreationManager.InsertPersistenceInfoObjects(expressionField as IEntityField2);
+      }
+
+      IRetrievalQuery selectQuery = exposedQueryCreationManager.CreateSelectDQ(new QueryParameters(0, 0, 0)
+      {
+        FilterToUse = predicateExpressionToUse,
+        RelationsToUse = filter.Relations,
+        AllowDuplicates = true,
+        FieldsForQuery = fieldsToFetch,
+        FieldPersistenceInfosForQuery = persistenceInfos,
+        IsLocalCopy = true
+      });
+      try
+      {
+        OnFetchEntity(selectQuery, fieldsToFetch);
+        ExecuteSingleRowRetrievalQuery(selectQuery, fieldsToFetch, persistenceInfos);
+        OnFetchEntityComplete(selectQuery, fieldsToFetch);
+      }
+      finally
+      {
+        selectQuery.Dispose();
+      }
+      TraceHelper.WriteLineIf(TraceHelper.PersistenceExecutionSwitch.TraceInfo, "DataAccessAdapterBase.FetchEntityUsingFilter", "Method Exit");
+      return fieldsToFetch.State == EntityState.Fetched;
+    }
 
     /// <summary>
     ///   Async variant of <see cref="FetchExcludedFields(IEntity2, ExcludeIncludeFieldsList)" />.
@@ -213,13 +336,13 @@ namespace AW.Dal.SqlServer
     /// <remarks>
     ///   The field data is set like a normal field value set, so authorization is applied to it.
     /// </remarks>
-    public async Task FetchExcludedFieldsAsStreamsAsync(IEntity2 entity, ExcludeIncludeFieldsList excludedIncludedFields, 
+    public async Task FetchExcludedFieldsAsStreamsAsync(IEntity2 entity, ExcludeIncludeFieldsList excludedIncludedFields,
       Action<IEntityCore> doSomethingWithStreams, CancellationToken cancellationToken)
     {
       if (excludedIncludedFields == null || excludedIncludedFields.Count <= 0 || entity == null) return;
 
       var collection = new EntityCollectionNonGeneric(entity.GetEntityFactory()) { (EntityBase2)entity };
-      await FetchExcludedFieldsAsStreamsAsync(collection, excludedIncludedFields,doSomethingWithStreams, cancellationToken).ConfigureAwait(false);
+      await FetchExcludedFieldsAsStreamsAsync(collection, excludedIncludedFields, doSomethingWithStreams, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -247,23 +370,19 @@ namespace AW.Dal.SqlServer
     ///   databases have a limit
     ///   on the # of parameters per query.
     /// </remarks>
-    public virtual async Task FetchExcludedFieldsAsStreamsAsync(IEntityCollection2 entities, ExcludeIncludeFieldsList excludedIncludedFields, Action<IEntityCore> doSomethingWithStreams, CancellationToken cancellationToken)
+    public virtual async Task FetchExcludedFieldsAsStreamsAsync(IEntityCollection2 entities, ExcludeIncludeFieldsList excludedIncludedFields, Action<IEntityCore> doSomethingWithStreams,
+      CancellationToken cancellationToken)
     {
       if (entities == null || entities.Count <= 0) return;
       if (entities.EntityFactoryToUse == null) throw new ORMGeneralOperationException("The entity factory of the passed in entities collection is null.");
 
-      var persistenceCoreType = typeof(PersistenceCore);
-      var exposedPersistenceCore = Exposed.From(persistenceCoreType);
-      var assembly = typeof(IEntityCollection2).Assembly;
-      var excludedFieldsBatchQueryParametersType = assembly.GetType("SD.LLBLGen.Pro.ORMSupportClasses.ExcludedFieldsBatchQueryParameters`1");
-      var entityBase2Type = typeof(EntityBase2);
-      var excludedFieldsBatchQueryParametersSpecificType = excludedFieldsBatchQueryParametersType.MakeGenericType(entityBase2Type);
-      var parameters = Activator.CreateInstance(excludedFieldsBatchQueryParametersSpecificType);
 
-      var produceElementsForExcludedFieldBatchFetchesMethod = persistenceCoreType.GetMethod("ProduceElementsForExcludedFieldBatchFetches", BindingFlags.NonPublic | BindingFlags.Static);
+      var parameters = Activator.CreateInstance(ExcludedFieldsBatchQueryParametersSpecificType);
+
+      var produceElementsForExcludedFieldBatchFetchesMethod = PersistenceCoreType.GetMethod("ProduceElementsForExcludedFieldBatchFetches", BindingFlags.NonPublic | BindingFlags.Static);
 
       // Binding the method info to generic arguments
-      Type[] genericArguments = { entityBase2Type };
+      Type[] genericArguments = { EntityBase2Type };
       if (produceElementsForExcludedFieldBatchFetchesMethod != null)
       {
         var produceElementsForExcludedFieldBatchFetchesMethodInfo = produceElementsForExcludedFieldBatchFetchesMethod.MakeGenericMethod(genericArguments);
@@ -289,13 +408,13 @@ namespace AW.Dal.SqlServer
           var parametersExposed = Exposed.From(parameters);
 
           var ExcludedFieldsBatchQueryParametersType = parameters.GetType();
-          var propertyInfo = excludedFieldsBatchQueryParametersSpecificType.GetRuntimeProperties().Last();
-          var x = excludedFieldsBatchQueryParametersType.GetProperty("ResultFields", BindingFlags.NonPublic);
+          var propertyInfo = ExcludedFieldsBatchQueryParametersSpecificType.GetRuntimeProperties().Last();
+          var x = ExcludedFieldsBatchQueryParametersType.GetProperty("ResultFields", BindingFlags.NonPublic);
           var resultFields = propertyInfo.GetValue(parameters) as IEntityFieldsCore;
           // var resultFields = parameters.ResultFields;
           var fieldPersistenceInfos = exposedQueryCreationManager.GetFieldPersistenceInfos(resultFields) as IFieldPersistenceInfo[];
 
-          var fetchExcludedFieldsBatchesAsyncMethod = persistenceCoreType.GetMethod("FetchExcludedFieldsBatchesAsync", BindingFlags.NonPublic | BindingFlags.Static);
+          var fetchExcludedFieldsBatchesAsyncMethod = PersistenceCoreType.GetMethod("FetchExcludedFieldsBatchesAsync", BindingFlags.NonPublic | BindingFlags.Static);
           var fetchExcludedFieldsBatchesAsyncMethodInfo = fetchExcludedFieldsBatchesAsyncMethod.MakeGenericMethod(genericArguments);
 
           //var reader = await ((IDataAccessCore)this).FetchExcludedFieldBatchAsync(parameters.ResultFields, parameters.Filter, parameters.BatchSize, cancellationToken)
@@ -305,25 +424,25 @@ namespace AW.Dal.SqlServer
           //await aResult;
 
           var entityHashes = new Dictionary<int, List<IEntityCore>>();
-          exposedPersistenceCore.CreateEntityHashes(entityHashes, entities);
+          ExposedPersistenceCore.CreateEntityHashes(entityHashes, entities);
           IEntityFieldsCore hashProducer = entities[0].Fields.Clone();
 
           var currentIndex = 0;
-          var getNumberOfBatches = Reflect.Getter(excludedFieldsBatchQueryParametersSpecificType, "NumberOfBatches");
-          var getDummy = Reflect.Getter(excludedFieldsBatchQueryParametersSpecificType, "Dummy");
+          var getNumberOfBatches = Reflect.Getter(ExcludedFieldsBatchQueryParametersSpecificType, "NumberOfBatches");
+          var getDummy = Reflect.Getter(ExcludedFieldsBatchQueryParametersSpecificType, "Dummy");
           var dummy = getDummy(parameters) as IEntityCore;
-          var getBatchSize = Reflect.Getter(excludedFieldsBatchQueryParametersSpecificType, "BatchSize");
+          var getBatchSize = Reflect.Getter(ExcludedFieldsBatchQueryParametersSpecificType, "BatchSize");
           var batchSize = (int)getBatchSize(parameters);
-          var getNumberOfPkFields = Reflect.Getter(excludedFieldsBatchQueryParametersSpecificType, "NumberOfPkFields");
+          var getNumberOfPkFields = Reflect.Getter(ExcludedFieldsBatchQueryParametersSpecificType, "NumberOfPkFields");
           var numberOfPkFields = (int)getNumberOfPkFields(parameters);
-          var getFilter = Reflect.Getter(excludedFieldsBatchQueryParametersSpecificType, "Filter");
+          var getFilter = Reflect.Getter(ExcludedFieldsBatchQueryParametersSpecificType, "Filter");
           var filter = getFilter(parameters) as IRelationPredicateBucket;
-          var getExcludedFieldsToUse = Reflect.Getter(excludedFieldsBatchQueryParametersSpecificType, "ExcludedFieldsToUse");
+          var getExcludedFieldsToUse = Reflect.Getter(ExcludedFieldsBatchQueryParametersSpecificType, "ExcludedFieldsToUse");
           var excludedFieldsToUse = getExcludedFieldsToUse(parameters) as List<IEntityFieldCore>;
           var numberOfBatches = getNumberOfBatches(parameters) as int?;
           for (var i = 0; i < numberOfBatches; i++)
           {
-            List<IEntityFieldCore> pkFieldsToPass = exposedPersistenceCore.PrepareExcludedFieldsBatchFetchElements(entities, dummy, batchSize,
+            List<IEntityFieldCore> pkFieldsToPass = ExposedPersistenceCore.PrepareExcludedFieldsBatchFetchElements(entities, dummy, batchSize,
               numberOfPkFields, filter, currentIndex);
             // fetch batch using a datareader.
             IDataReader reader = null;
@@ -338,12 +457,12 @@ namespace AW.Dal.SqlServer
                   FieldsForQuery = resultFields as IEntityFields2,
                   IsLocalCopy = true
                 }, cancellationToken).ConfigureAwait(false);
-              ConsumeExcludedFieldsValueBatch(exposedPersistenceCore, dummy, numberOfPkFields, excludedFieldsToUse, resultFields, fieldPersistenceInfos,
+              ConsumeExcludedFieldsValueBatch(ExposedPersistenceCore, dummy, numberOfPkFields, excludedFieldsToUse, resultFields, fieldPersistenceInfos,
                 entityHashes, hashProducer, pkFieldsToPass, reader, doSomethingWithStreams);
             }
             finally
             {
-              var cleanupDataReaders = persistenceCoreType.GetRuntimeMethods().Where(m => m.Name.Contains("CleanupDataReader"));
+              var cleanupDataReaders = PersistenceCoreType.GetRuntimeMethods().Where(m => m.Name.Contains("CleanupDataReader"));
               var methodInfo = cleanupDataReaders.First();
               methodInfo.Invoke(null, new[] { reader, null });
               //var y = Reflect.Method(persistenceCoreType, "CleanupDataReader");
@@ -387,7 +506,7 @@ namespace AW.Dal.SqlServer
           // pk fields are at the front. 
           var index = ((IEntityFieldCore)dummy.Fields.PrimaryKeyFields[j]).FieldIndex;
           var fieldInfo = hashProducer.GetFieldInfo(index);
-          var val =reader.GetValue(j);
+          var val = reader.GetValue(j);
           var value = FieldUtilities.DetermineValueToSet(fieldInfo, persistenceInfos[j], val, out isConverted);
           hashProducer.SetCurrentValue(index, value);
         }
