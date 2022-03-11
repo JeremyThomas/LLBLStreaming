@@ -180,7 +180,7 @@ namespace AW.Services
     {
       var linqMetaData = new LinqMetaData(dataAccessAdapter);
       var productPhotoEntity = linqMetaData.ProductPhoto.ExcludeFields(e => e.LargePhoto).First(p => p.ProductPhotoID == productPhotoID);
-     // dataAccessAdapter.FetchExcludedFieldsAsStreams(productPhotoEntity, null, null, null);
+
       var entityFieldCore = ProductPhotoFields.LargePhoto;
       var excludedFields = new ExcludeIncludeFieldsList { entityFieldCore };
       long length = 0;
@@ -204,6 +204,28 @@ namespace AW.Services
       }
     }
 
+    public static async Task<long> StreamLargePhotoToFileWithExcludedFieldsAsync2(DataAccessAdapter dataAccessAdapter, int productPhotoID, string filePath, CancellationToken cancellationToken)
+    {
+      var productPhotoEntity = new ProductPhotoEntity(productPhotoID);
+      var entityFieldCore = ProductPhotoFields.LargePhoto;
+      using var dataReader = await dataAccessAdapter.FetchExcludedFieldsAsStreamsAsync(productPhotoEntity, new IncludeFieldsList { entityFieldCore }, cancellationToken);
+      long length = 0;
+      var currentValue = productPhotoEntity.Fields.GetCurrentValue(entityFieldCore.FieldIndex);
+      using var fileStream = File.Create(filePath);
+      if (currentValue is Stream stream)
+      {
+        await stream.CopyToAsync(fileStream);
+        length = fileStream.Length;
+      }
+      else if (currentValue is byte[] { Length: > 0 } blob)
+      {
+        await fileStream.WriteAsync(blob, 0, blob.Length, cancellationToken);
+        length = fileStream.Length;
+      }
+
+      return length;
+    }
+
 
     public static async Task<long> StreamLargePhotoToFileAsync(IDataAccessAdapter dataAccessAdapter, long productPhotoID, string filePath, CancellationToken cancellationToken,
       IProgress<long> progress)
@@ -211,7 +233,7 @@ namespace AW.Services
       using var dateReader = await GetProductLargePhotoReader(dataAccessAdapter, productPhotoID, cancellationToken);
       if (dateReader is DbDataReader reader && await reader.ReadAsync(cancellationToken).ConfigureAwait(GeneralHelper.ContinueOnCapturedContext))
       {
-        var stream = GetStream(reader, 1);
+        var stream = DataHelper.GetStream(reader, 1);
         if (stream.CanRead)
         {
           using var file = new FileStream(filePath, FileMode.Create, FileAccess.Write);
@@ -232,35 +254,6 @@ namespace AW.Services
         .Select(ProductPhotoFields.ProductPhotoID, ProductPhotoFields.LargePhoto, ProductPhotoFields.LargePhotoFileName)
         .Where(ProductPhotoFields.ProductPhotoID == productPhotoID);
       return dataAccessAdapter.FetchAsDataReaderAsync(q, CommandBehavior.SequentialAccess, cancellationToken);
-    }
-
-    /// <summary>
-    ///   Gets the attachment stream. Should be System.Data.SqlClient.SqlSequentialStream
-    /// </summary>
-    /// <param name="reader">The reader.</param>
-    /// <returns>Stream and its Length</returns>
-    public static (Stream stream, long size) GetStream(DbDataReader reader)
-    {
-      Logger.DebugMethod();
-      var size = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-      return (GetStream(reader, 1), size);
-    }
-
-    /// <summary>
-    ///   Gets the stream. Should be System.Data.SqlClient.SqlSequentialStream
-    /// </summary>
-    /// <param name="reader">The reader.</param>
-    /// <param name="ordinal"></param>
-    /// <returns>The stream</returns>
-    public static Stream GetStream(DbDataReader reader, int ordinal)
-    {
-      var readerType = reader.GetType();
-      Logger.DebugMethod(readerType);
-      if (reader.IsDBNull(ordinal))
-        return null;
-      var stream = reader.GetStream(ordinal);
-      Logger.DebugFormat("{0} returned {1} which has CanRead: {2}", readerType, stream.GetType(), stream.CanRead);
-      return stream;
     }
   }
 }

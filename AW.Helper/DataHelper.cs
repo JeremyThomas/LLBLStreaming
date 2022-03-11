@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using log4net;
 using Microsoft.Win32;
 
 namespace AW.Helper
@@ -544,6 +545,37 @@ namespace AW.Helper
         target.RemotingFormat = serializationFormat;
       else
         target.DataSet.RemotingFormat = serializationFormat;
+    }
+
+    static readonly ILog Logger = LogManager.GetLogger(typeof(DataHelper));
+
+    /// <summary>
+    ///   Gets the attachment stream. Should be System.Data.SqlClient.SqlSequentialStream
+    /// </summary>
+    /// <param name="reader">The reader.</param>
+    /// <returns>Stream and its Length</returns>
+    public static (Stream stream, long size) GetStream(DbDataReader reader)
+    {
+      Logger.DebugMethod();
+      var size = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+      return (GetStream(reader, 1), size);
+    }
+
+    /// <summary>
+    ///   Gets the stream. Should be System.Data.SqlClient.SqlSequentialStream
+    /// </summary>
+    /// <param name="reader">The reader.</param>
+    /// <param name="ordinal"></param>
+    /// <returns>The stream</returns>
+    public static Stream GetStream(DbDataReader reader, int ordinal)
+    {
+      var readerType = reader.GetType();
+      Logger.DebugMethod(readerType);
+      if (reader.IsDBNull(ordinal))
+        return null;
+      var stream = reader.GetStream(ordinal);
+      Logger.DebugFormat("{0} returned {1} which has CanRead: {2}", readerType, stream.GetType(), stream.CanRead);
+      return stream;
     }
   }
 }
